@@ -3,8 +3,15 @@ from tkinter import ttk, messagebox
 import sqlite3
 import random
 import hashlib
+import re
 
-# ---------------- DATABASE ----------------
+# ---------- COLORS ----------
+
+BG_COLOR = "#E8F5E9"
+BTN_COLOR = "#8BC34A"
+BTN_HOVER = "#7CB342"
+
+# ---------- DATABASE ----------
 
 conn = sqlite3.connect("passwords.db")
 cursor = conn.cursor()
@@ -27,9 +34,9 @@ password TEXT
 )
 """)
 
-# ---------------- DATA ----------------
+# ---------- DATA ----------
 
-categories = ["TikTok","YouTube","Gmail","WiFi","Bank"]
+categories = ["TikTok","YouTube","Email","WiFi","Другие"]
 
 words = [
 "tiger","panda","rocket","coffee","cookie",
@@ -39,75 +46,39 @@ words = [
 current_user = None
 current_category = None
 
-# ---------------- CENTER WINDOW ----------------
-
-def center_window(window,width,height):
-
-    screen_width = window.winfo_screenwidth()
-    screen_height = window.winfo_screenheight()
-
-    x = int((screen_width/2)-(width/2))
-    y = int((screen_height/2)-(height/2))
-
-    window.geometry(f"{width}x{height}+{x}+{y}")
-
-# ---------------- SECURITY ----------------
+# ---------- SECURITY ----------
 
 def hash_password(password):
     return hashlib.sha256(password.encode()).hexdigest()
 
-# ---------------- AUTH ----------------
+# ---------- PASSWORD CHECK ----------
 
-def register():
+def check_password_strength(password):
 
-    username = username_entry.get()
+    if not re.match(r'^[A-Za-z0-9!@#$%^&*()_+=-]*$', password):
+        return "Только латиница"
+
+    length = len(password) >= 8
+    digit = bool(re.search(r"\d", password))
+
+    score = sum([length,digit])
+
+    if score == 2:
+        return "Надёжный"
+    elif score == 1:
+        return "Средний"
+    else:
+        return "Слабый"
+
+# ---------- PASSWORD FUNCTIONS ----------
+
+def update_strength(event=None):
+
     password = password_entry.get()
 
-    if username == "" or password == "":
-        messagebox.showwarning("Error","Fill all fields")
-        return
+    strength = check_password_strength(password)
 
-    hashed = hash_password(password)
-
-    try:
-
-        cursor.execute(
-            "INSERT INTO users(username,password) VALUES (?,?)",
-            (username,hashed)
-        )
-
-        conn.commit()
-
-        messagebox.showinfo("Success","User created")
-
-    except:
-
-        messagebox.showerror("Error","User already exists")
-
-def login():
-
-    global current_user
-
-    username = username_entry.get()
-    password = hash_password(password_entry.get())
-
-    cursor.execute(
-        "SELECT id FROM users WHERE username=? AND password=?",
-        (username,password)
-    )
-
-    result = cursor.fetchone()
-
-    if result:
-
-        current_user = result[0]
-        open_manager()
-
-    else:
-
-        messagebox.showerror("Error","Wrong login or password")
-
-# ---------------- PASSWORD FUNCTIONS ----------------
+    strength_label.config(text=f"Надёжность: {strength}")
 
 def generate_password():
 
@@ -120,14 +91,20 @@ def generate_password():
     password_entry.delete(0,tk.END)
     password_entry.insert(0,password)
 
+    update_strength()
+
 def save_password():
 
     category = category_var.get()
     login = login_entry.get()
     password = password_entry.get()
 
+    if not re.match(r'^[A-Za-z0-9!@#$%^&*()_+=-]+$', password):
+        messagebox.showwarning("Ошибка","Пароль должен быть на латинице")
+        return
+
     if login == "" or password == "":
-        messagebox.showwarning("Error","Fill fields")
+        messagebox.showwarning("Ошибка","Заполните поля")
         return
 
     cursor.execute(
@@ -165,7 +142,7 @@ def copy_password():
     selected = tree.selection()
 
     if not selected:
-        messagebox.showwarning("Error","Select password")
+        messagebox.showwarning("Ошибка","Выберите пароль")
         return
 
     password = tree.item(selected[0])["values"][2]
@@ -173,35 +150,82 @@ def copy_password():
     manager.clipboard_clear()
     manager.clipboard_append(password)
 
-    messagebox.showinfo("Copied","Password copied")
+    messagebox.showinfo("Скопировано","Пароль скопирован")
 
 def delete_password():
 
     selected = tree.selection()
 
     if not selected:
-        messagebox.showwarning("Error","Select password")
+        messagebox.showwarning("Ошибка","Выберите пароль")
         return
 
     row_id = tree.item(selected[0])["values"][0]
 
-    cursor.execute(
-        "DELETE FROM passwords WHERE id=?",
-        (row_id,)
-    )
-
+    cursor.execute("DELETE FROM passwords WHERE id=?", (row_id,))
     conn.commit()
 
     load_passwords(current_category)
 
-# ---------------- LOGOUT ----------------
+# ---------- AUTH ----------
+
+def register():
+
+    username = username_entry.get()
+    password = password_reg_entry.get()
+
+    if username == "" or password == "":
+        messagebox.showwarning("Ошибка","Заполните поля")
+        return
+
+    hashed = hash_password(password)
+
+    try:
+
+        cursor.execute(
+            "INSERT INTO users(username,password) VALUES (?,?)",
+            (username,hashed)
+        )
+
+        conn.commit()
+
+        messagebox.showinfo("Успех","Пользователь создан")
+
+    except:
+
+        messagebox.showerror("Ошибка","Пользователь уже существует")
+
+def login():
+
+    global current_user
+
+    username = username_entry.get()
+    password = hash_password(password_reg_entry.get())
+
+    cursor.execute(
+        "SELECT id FROM users WHERE username=? AND password=?",
+        (username,password)
+    )
+
+    result = cursor.fetchone()
+
+    if result:
+
+        current_user = result[0]
+        open_manager()
+
+    else:
+
+        messagebox.showerror("Ошибка","Неверный логин или пароль")
+
+# ---------- LOGOUT ----------
 
 def logout():
 
     manager.destroy()
     build_login()
 
-# ---------------- PASSWORD MANAGER ----------------
+# ---------- PASSWORD MANAGER WINDOW ----------
 
 def open_manager():
 
@@ -211,80 +235,76 @@ def open_manager():
 
     manager = tk.Tk()
 
-    manager.title("Password Manager")
+    manager.title("Secure Password Manager")
 
-    center_window(manager,800,800)
-
-    manager.configure(bg="#1e1e2f")
+    manager.geometry("1920x1080")
+    manager.configure(bg=BG_COLOR)
 
     title=tk.Label(
         manager,
-        text="🔐 Password Manager",
-        font=("Arial",20,"bold"),
-        fg="white",
-        bg="#1e1e2f"
+        text="🔐 Secure Password Manager",
+        font=("Arial",30,"bold"),
+        bg=BG_COLOR
     )
 
-    title.pack(pady=15)
-
-    # CATEGORY SELECT
+    title.pack(pady=25)
 
     global category_var
     category_var = tk.StringVar(manager)
     category_var.set(categories[0])
 
     category_menu=tk.OptionMenu(manager,category_var,*categories)
-    category_menu.pack(pady=5)
+    category_menu.pack(pady=10)
 
-    # LOGIN
-
-    tk.Label(manager,text="Login / Email",bg="#1e1e2f",fg="white").pack()
+    tk.Label(manager,text="Логин / Email",bg=BG_COLOR).pack()
 
     global login_entry
-    login_entry=tk.Entry(manager,width=35)
+    login_entry=tk.Entry(manager,width=40,font=("Arial",16))
     login_entry.pack(pady=5)
 
-    # PASSWORD
-
-    tk.Label(manager,text="Password",bg="#1e1e2f",fg="white").pack()
+    tk.Label(manager,text="Пароль",bg=BG_COLOR).pack()
 
     global password_entry
-    password_entry=tk.Entry(manager,width=35)
+    password_entry=tk.Entry(manager,width=40,font=("Arial",16))
     password_entry.pack(pady=5)
+
+    password_entry.bind("<KeyRelease>",update_strength)
+
+    global strength_label
+    strength_label = tk.Label(manager,text="Надёжность:",bg=BG_COLOR)
+    strength_label.pack()
 
     tk.Button(
         manager,
-        text="Suggest Password",
+        text="Сгенерировать пароль",
         command=generate_password,
-        bg="#4CAF50",
-        fg="white",
-        width=20
+        width=25,
+        height=2,
+        bg=BTN_COLOR
     ).pack(pady=10)
 
     tk.Button(
         manager,
-        text="Save Password",
+        text="Сохранить пароль",
         command=save_password,
-        bg="#2196F3",
-        fg="white",
-        width=20
+        width=25,
+        height=2,
+        bg=BTN_COLOR
     ).pack(pady=5)
 
-    # CATEGORY BUTTONS
-
-    category_frame=tk.Frame(manager,bg="#1e1e2f")
-    category_frame.pack(pady=10)
+    category_frame=tk.Frame(manager,bg=BG_COLOR)
+    category_frame.pack(pady=15)
 
     for cat in categories:
 
         tk.Button(
             category_frame,
             text=cat,
-            width=10,
+            width=15,
+            height=2,
+            bg=BTN_COLOR,
             command=lambda c=cat: load_passwords(c)
-        ).pack(side="left",padx=5)
-
-    # TABLE
+        ).pack(side="left",padx=10)
 
     global tree
 
@@ -292,59 +312,56 @@ def open_manager():
 
     tree["columns"]=("ID","Login","Password")
 
-    tree.column("#0",width=0,stretch=tk.NO)
-    tree.column("ID",width=50)
-    tree.column("Login",width=220)
-    tree.column("Password",width=220)
+    tree.column("#0",width=0)
+    tree.column("ID",width=80)
+    tree.column("Login",width=350)
+    tree.column("Password",width=350)
 
-    tree.heading("#0",text="")
     tree.heading("ID",text="ID")
     tree.heading("Login",text="Login")
     tree.heading("Password",text="Password")
 
     tree.pack(pady=20)
 
-    # ACTION BUTTONS
-
     tk.Button(
         manager,
-        text="Copy Password",
+        text="Копировать пароль",
         command=copy_password,
-        bg="#4CAF50",
-        fg="white",
-        width=20
-    ).pack(pady=3)
+        width=25,
+        height=2,
+        bg=BTN_COLOR
+    ).pack(pady=5)
 
     tk.Button(
         manager,
-        text="Delete Password",
+        text="Удалить пароль",
         command=delete_password,
-        bg="#f44336",
-        fg="white",
-        width=20
-    ).pack(pady=3)
+        width=25,
+        height=2,
+        bg=BTN_COLOR
+    ).pack(pady=5)
 
     tk.Button(
         manager,
-        text="Logout",
+        text="Выйти из аккаунта",
         command=logout,
-        bg="#ff9800",
-        fg="white",
-        width=20
-    ).pack(pady=8)
+        width=25,
+        height=2,
+        bg=BTN_COLOR
+    ).pack(pady=10)
 
     tk.Button(
         manager,
-        text="Close",
+        text="Закрыть программу",
         command=manager.destroy,
-        bg="#9e9e9e",
-        fg="white",
-        width=20
+        width=25,
+        height=2,
+        bg=BTN_COLOR
     ).pack()
 
     manager.mainloop()
 
-# ---------------- LOGIN WINDOW ----------------
+# ---------- LOGIN WINDOW ----------
 
 def build_login():
 
@@ -353,53 +370,72 @@ def build_login():
     login_window=tk.Tk()
 
     login_window.title("Secure Password Manager")
-
-    center_window(login_window,500,400)
-
-    login_window.configure(bg="#1e1e2f")
+    login_window.geometry("1920x1080")
+    login_window.configure(bg=BG_COLOR)
 
     title=tk.Label(
         login_window,
         text="🔐 Secure Password Manager",
-        font=("Arial",20,"bold"),
-        fg="white",
-        bg="#1e1e2f"
+        font=("Arial",32,"bold"),
+        bg=BG_COLOR
     )
 
-    title.pack(pady=25)
+    title.pack(pady=30)
 
-    tk.Label(login_window,text="Username",bg="#1e1e2f",fg="white").pack()
+    description = tk.Label(
+        login_window,
+        text="Программа для безопасного хранения паролей.\n"
+             "Позволяет сохранять, генерировать и управлять паролями.",
+        font=("Arial",16),
+        bg=BG_COLOR
+    )
+
+    description.pack(pady=10)
+
+    requirements = tk.Label(
+        login_window,
+        text="Требования к паролю:\n"
+             "- минимум 8 символов\n"
+             "- латиница\n"
+             "- желательно наличие цифр",
+        font=("Arial",14),
+        bg=BG_COLOR
+    )
+
+    requirements.pack(pady=15)
+
+    tk.Label(login_window,text="Имя пользователя",bg=BG_COLOR).pack()
 
     global username_entry
-    username_entry=tk.Entry(login_window,width=30)
+    username_entry=tk.Entry(login_window,width=40,font=("Arial",16))
     username_entry.pack(pady=5)
 
-    tk.Label(login_window,text="Password",bg="#1e1e2f",fg="white").pack()
+    tk.Label(login_window,text="Пароль",bg=BG_COLOR).pack()
 
-    global password_entry
-    password_entry=tk.Entry(login_window,show="*",width=30)
-    password_entry.pack(pady=5)
+    global password_reg_entry
+    password_reg_entry=tk.Entry(login_window,show="*",width=40,font=("Arial",16))
+    password_reg_entry.pack(pady=5)
 
     tk.Button(
         login_window,
-        text="Login",
+        text="Войти",
         command=login,
-        bg="#4CAF50",
-        fg="white",
-        width=20
+        width=25,
+        height=2,
+        bg=BTN_COLOR
     ).pack(pady=10)
 
     tk.Button(
         login_window,
-        text="Register",
+        text="Зарегистрироваться",
         command=register,
-        bg="#2196F3",
-        fg="white",
-        width=20
+        width=25,
+        height=2,
+        bg=BTN_COLOR
     ).pack()
 
     login_window.mainloop()
 
-# ---------------- START ----------------
+# ---------- START ----------
 
 build_login()
